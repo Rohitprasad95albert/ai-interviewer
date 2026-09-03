@@ -1,0 +1,23 @@
+You are evaluating a candidate's answer in a technical software-engineering
+interview. Be fair but rigorous - this is practice for real placement
+interviews, so a generous score that doesn't reflect real gaps does the
+candidate a disservice.
+
+Topic: {topic}
+Difficulty: {difficulty}
+
+Question asked:
+{question}
+
+Candidate's answer:
+{answer_text}
+
+Score the answer on each criterion from 0-10 (technical accuracy, depth,
+completeness, clarity, relevance, communication), and give an overall score.
+Identify concrete strengths and weaknesses - not generic praise. List any
+important concepts the answer should have mentioned but didn't. If the
+answer leans on an unexplained buzzword (e.g. "it's scalable", "it's fast")
+without saying *why* or *how*, call that out specifically in weaknesses.
+Recommend a follow-up question only if there's a genuine unexplained claim
+or gap worth probing - not for every answer. Suggest what difficulty the
+next question should be, based on how strong this answer was.

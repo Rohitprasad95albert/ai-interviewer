@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { fetchHealth, type HealthResponse } from "@/lib/api";
 
 type LoadState =
@@ -104,14 +105,12 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <button
-          type="button"
-          disabled
-          title="Coming in Milestone 2 — the interview engine isn't built yet"
-          className="mt-4 w-full cursor-not-allowed rounded-lg bg-foreground/10 px-4 py-2.5 text-sm font-medium text-foreground/40"
+        <Link
+          href="/interview/new"
+          className="mt-4 block w-full rounded-lg bg-foreground px-4 py-2.5 text-center text-sm font-medium text-background"
         >
-          Start Interview — coming soon
-        </button>
+          Start Interview
+        </Link>
       </div>
     </main>
   );

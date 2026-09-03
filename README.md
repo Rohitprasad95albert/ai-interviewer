@@ -10,16 +10,24 @@ This is a portfolio project built incrementally, milestone by milestone. See
 
 ## Status
 
-**Milestone 1 — Foundation: in progress.**
+**Milestone 1 (Foundation) and Milestone 2 (Interview MVP): complete.**
 
-- [x] Repository structure
-- [x] FastAPI backend with MongoDB (Motor) connection + `/api/health`
-- [x] Next.js + TypeScript + Tailwind frontend scaffold
-- [ ] Minimal dashboard wired to the health endpoint
-- [ ] Verified end-to-end (frontend → backend → database)
+- [x] Repository structure, FastAPI + MongoDB + Next.js, `/api/health`
+- [x] Dashboard wired to the health endpoint
+- [x] Technical Interview: setup → question → answer → evaluation → next
+      question → completion, fully working end-to-end
+- [x] Interview state machine (`app/interview/state_machine.py`), persisted
+      to MongoDB (`interviews`, `interview_questions`, `answers`,
+      `evaluations` collections)
+- [x] AI layer behind an interface (`app/ai/base.py`): a deterministic
+      `StubLLMClient` (used automatically without an API key) and an
+      `AnthropicLLMClient` (implemented against the current Anthropic SDK,
+      **not yet verified against a live key** - see Known limitations)
+- [x] Deterministic vague-answer detection (spec §12)
 
-Nothing beyond Milestone 1 (interview engine, AI evaluation, resume parsing,
-etc.) is implemented yet — see `docs/` for the full roadmap as it's added.
+Not yet implemented: difficulty adaptation, follow-up questions, HR/project/
+resume interview modes, candidate profile, analytics, voice, auth. See
+Roadmap below.
 
 ## Architecture
 
@@ -38,19 +46,29 @@ A **modular monolith**, not microservices:
 ```
 ai-interviewer/
 ├── frontend/     Next.js app
+│   ├── app/
+│   │   ├── page.tsx                     dashboard
+│   │   └── interview/
+│   │       ├── new/page.tsx             setup form
+│   │       └── [id]/                    live interview + report
+│   └── lib/api.ts                       typed fetch wrapper (mirrors backend schemas)
+│
 ├── backend/      FastAPI app
 │   ├── app/
-│   │   ├── api/routes/   HTTP endpoints
-│   │   ├── core/         config/settings
-│   │   ├── db/           MongoDB connection
-│   │   ├── models/       DB document models        (Milestone 2+)
-│   │   ├── schemas/      Pydantic request/response  (Milestone 2+)
-│   │   ├── services/     business logic             (Milestone 2+)
-│   │   ├── ai/           LLM client + components     (Milestone 2+)
-│   │   ├── interview/    interview state machine     (Milestone 2+)
-│   │   └── rag/          retrieval/embeddings        (later)
+│   │   ├── api/routes/     HTTP endpoints (health, interviews)
+│   │   ├── core/           config/settings
+│   │   ├── db/             MongoDB connection
+│   │   ├── schemas/        Pydantic request/response + LLM structured output
+│   │   ├── interview/      state machine, engine (orchestrator), Mongo repository,
+│   │   │                   deterministic vague-answer detector
+│   │   ├── ai/             LLMClient interface, stub + Anthropic implementations,
+│   │   │                   prompt loader
+│   │   ├── models/         (unused so far - schemas/ doubles as the DB shape)
+│   │   ├── services/       (unused so far - logic lives in interview/ for now)
+│   │   └── rag/            retrieval/embeddings                    (later)
 │   └── tests/
-├── prompts/      versioned LLM prompts (interviewer/evaluator/followup/report)
+│
+├── prompts/      versioned LLM prompt templates (interviewer/, evaluator/, ...)
 ├── docs/
 └── scripts/
 ```
@@ -105,17 +123,44 @@ cd backend
 pytest -v
 ```
 
+### Try it
+
+1. Open http://localhost:3000, click **Start Interview**
+2. Pick topics/difficulty/question count, start
+3. Answer each question - you'll see per-answer scores and feedback
+4. After the last question, view the full report
+
+Without `ANTHROPIC_API_KEY` set, this all runs against a deterministic stub
+AI (canned questions, heuristic scoring) - useful for developing/testing the
+app itself, but not a real interviewer. Set the key to get real questions
+and evaluation.
+
 ## Environment variables
 
 See [`backend/.env.example`](backend/.env.example) for the full list. Never
 commit a real `.env` file — it's git-ignored.
 
+## Known limitations
+
+- **`AnthropicLLMClient` is implemented but unverified against a live API
+  key** in this environment - it's written against the current documented
+  SDK API and type-checks, but no live model call has actually been made.
+  Set `ANTHROPIC_API_KEY` and run a real interview to confirm before relying
+  on it.
+- **Single technical-interview mode only** - no HR/project/resume/JD modes,
+  no difficulty adaptation, no follow-up questions yet (Milestone 5).
+- **Single user, no auth** - every interview is stored under a fixed
+  `user_id`. Fine for personal use now; real auth is Milestone 9.
+- **No interview history list UI yet** - individual reports work
+  (`/interview/[id]/report`), but there's no dashboard view of past
+  interviews (Milestone 3/16).
+
 ## Roadmap
 
 Following the milestone plan from the product spec:
 
-1. **Foundation** — repo, frontend/backend/DB wiring, health check *(in progress)*
-2. **Interview MVP** — setup → question → answer → evaluation → next question
+1. **Foundation** — repo, frontend/backend/DB wiring, health check *(done)*
+2. **Interview MVP** — setup → question → answer → evaluation → next question *(done)*
 3. **Persistence** — interview history, reports
 4. **Resume ingestion** — upload, extraction, resume-based questions
 5. **Adaptive interviewing** — difficulty adaptation, follow-ups, weak-topic detection
