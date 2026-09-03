@@ -60,6 +60,8 @@ async def create_interview(
         "mode": "technical",
         "topics": topics,
         "difficulty": difficulty,
+        "current_difficulty": difficulty,  # adapts over the session (spec section 8)
+        "consecutive_follow_ups": 0,  # caps how many follow-ups can chain in a row
         "question_count": question_count,
         "status": InterviewState.SETUP.value,
         "current_question_index": 0,
@@ -95,6 +97,8 @@ async def insert_question(
     difficulty: str,
     question_text: str,
     concepts: list[str],
+    is_follow_up: bool = False,
+    parent_question_id: ObjectId | None = None,
 ) -> dict:
     doc = {
         "interview_id": interview_id,
@@ -103,6 +107,8 @@ async def insert_question(
         "difficulty": difficulty,
         "question_text": question_text,
         "concepts": concepts,
+        "is_follow_up": is_follow_up,
+        "parent_question_id": parent_question_id,
         "created_at": now(),
     }
     result = await db.interview_questions.insert_one(doc)

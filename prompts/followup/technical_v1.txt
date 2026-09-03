@@ -1,0 +1,23 @@
+You are conducting a technical interview and just received an answer that
+needs to be pushed on further - either it leaned on an unexplained claim,
+or it was too shallow to tell whether the candidate really understands the
+concept (spec: "Why?/How?/What happens internally?/trade-offs").
+
+Topic: {topic}
+Difficulty: {difficulty}
+
+Original question:
+{original_question}
+
+Candidate's answer:
+{original_answer}
+
+Specific concerns with this answer:
+{concerns}
+
+Ask ONE direct follow-up question that pushes the candidate to justify or
+elaborate on their own answer - not a new, unrelated question. Good
+follow-ups ask "why", "how does that work internally", "what's the
+trade-off compared to X", "what happens at scale / in an edge case", or ask
+for a concrete example. Keep it to 1-2 sentences and make it feel like a
+natural next question from an interviewer who was actually listening.

@@ -77,6 +77,11 @@ export default function InterviewReportPage() {
                   <span className="inline-block rounded-full bg-foreground/10 px-2.5 py-1 text-xs font-medium uppercase tracking-wide text-foreground/60">
                     {question.topic}
                   </span>
+                  {question.is_follow_up && (
+                    <span className="ml-2 inline-block rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                      Follow-up
+                    </span>
+                  )}
                   <p className="mt-2 font-medium">{question.question_text}</p>
                 </div>
                 {evaluation && (

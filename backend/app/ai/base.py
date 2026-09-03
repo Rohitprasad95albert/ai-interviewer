@@ -27,3 +27,19 @@ class LLMClient(Protocol):
         difficulty: Difficulty,
         answer_text: str,
     ) -> AnswerEvaluation: ...
+
+    async def generate_follow_up_question(
+        self,
+        *,
+        original_question: str,
+        original_answer: str,
+        topic: Topic,
+        difficulty: Difficulty,
+        weaknesses: list[str],
+        vague_flags: list[str],
+    ) -> GeneratedQuestion:
+        """
+        A deep-dive challenge on the candidate's own previous answer (spec
+        section 9: "Why?/How?/trade-offs"), not a fresh topic question.
+        """
+        ...

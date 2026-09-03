@@ -18,6 +18,7 @@ _ALLOWED_TRANSITIONS: dict[InterviewState, set[InterviewState]] = {
     },
     InterviewState.EVALUATING: {
         InterviewState.NEXT_QUESTION,
+        InterviewState.FOLLOW_UP,
         InterviewState.COMPLETED,
         InterviewState.CANCELLED,
     },
@@ -25,12 +26,16 @@ _ALLOWED_TRANSITIONS: dict[InterviewState, set[InterviewState]] = {
         InterviewState.QUESTIONING,
         InterviewState.CANCELLED,
     },
-    # Reserved for later milestones - no code transitions into these yet.
-    InterviewState.LISTENING: {
+    # FOLLOW_UP behaves like QUESTIONING (a question is posed, waiting for
+    # an answer) but for a deep-dive challenge on the candidate's own
+    # previous answer rather than a fresh topic question - see spec
+    # section 9 and app/interview/engine.py's follow-up branch.
+    InterviewState.FOLLOW_UP: {
         InterviewState.EVALUATING,
         InterviewState.CANCELLED,
     },
-    InterviewState.FOLLOW_UP: {
+    # Reserved for the voice milestone - no code transitions into this yet.
+    InterviewState.LISTENING: {
         InterviewState.EVALUATING,
         InterviewState.CANCELLED,
     },

@@ -19,3 +19,23 @@ def build_evaluation_prompt(
     return template.format(
         topic=topic, difficulty=difficulty, question=question, answer_text=answer_text
     )
+
+
+def build_follow_up_prompt(
+    *,
+    original_question: str,
+    original_answer: str,
+    topic: Topic,
+    difficulty: Difficulty,
+    weaknesses: list[str],
+    vague_flags: list[str],
+) -> str:
+    template = load_prompt("followup", "technical_v1.txt")
+    concerns = "\n".join(f"- {c}" for c in (*weaknesses, *vague_flags)) or "(answer was just too brief to assess)"
+    return template.format(
+        topic=topic,
+        difficulty=difficulty,
+        original_question=original_question,
+        original_answer=original_answer,
+        concerns=concerns,
+    )

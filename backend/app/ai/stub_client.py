@@ -123,3 +123,32 @@ class StubLLMClient:
                 "easy" if score < 4 else "hard" if score >= 8 else difficulty
             ),
         )
+
+    async def generate_follow_up_question(
+        self,
+        *,
+        original_question: str,
+        original_answer: str,
+        topic: Topic,
+        difficulty: Difficulty,
+        weaknesses: list[str],
+        vague_flags: list[str],
+    ) -> GeneratedQuestion:
+        # Deterministic but genuinely reacts to *why* we're following up,
+        # rather than a single canned phrase - so tests (and a human
+        # reading stub output) can tell a vague-claim follow-up apart from
+        # a too-short-answer follow-up.
+        if vague_flags:
+            text = (
+                "You said that without explaining the mechanism behind it - "
+                "what specifically makes that true? Walk me through why."
+            )
+        else:
+            text = "Can you go deeper on that? What would happen at scale, or in an edge case?"
+
+        return GeneratedQuestion(
+            question=text,
+            topic=topic,
+            difficulty=difficulty,
+            concepts=[],
+        )

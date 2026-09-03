@@ -3,7 +3,23 @@ InterviewEngine - the deterministic orchestrator described in spec section
 23: it owns every state transition and all persistence; the LLMClient is
 only ever asked "what question?" or "how good is this answer?" and never
 gets to decide what happens next. That decision-making stays here, in plain
-Python, so it's testable without an LLM (see tests/test_interview_flow.py).
+Python, so it's testable without an LLM (see tests/test_interview_flow.py
+and tests/test_adaptive_engine.py).
+
+Milestone 5 (adaptive engine) adds three decisions to what was a straight
+line in Milestone 2, all made here rather than by the LLM:
+
+1. Difficulty adaptation (app/interview/difficulty_controller.py) - a pure
+   function of the evaluation's numeric score, not the LLM's own opinion of
+   what difficulty comes next.
+2. Follow-up vs. next topic - if the answer was vague (deterministic
+   detector) or the evaluator flagged it as needing a follow-up, the next
+   "question" is a deep-dive challenge on the SAME answer instead of moving
+   on. Capped at MAX_CONSECUTIVE_FOLLOW_UPS so one weak answer can't spiral
+   into using up the whole interview.
+3. Weak-topic targeting (app/interview/weakness_tracker.py) - once a topic
+   has at least two below-threshold answers in this session, the next
+   "new topic" question is steered toward it instead of strict rotation.
 """
 
 import logging
@@ -14,8 +30,10 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.ai.base import LLMClient
 from app.interview import repository as repo
+from app.interview.difficulty_controller import next_difficulty
 from app.interview.state_machine import transition
 from app.interview.vague_detector import detect_vague_flags
+from app.interview.weakness_tracker import compute_weak_topics
 from app.schemas.interview import (
     AnswerEvaluation,
     CreateInterviewRequest,
@@ -35,6 +53,11 @@ logger = logging.getLogger(__name__)
 # schema change later.
 DEFAULT_USER_ID = "default-user"
 
+# At most one follow-up in a row before we're forced back to the next
+# scheduled topic question, regardless of how the follow-up answer went -
+# keeps total question count (and interview length) predictable.
+MAX_CONSECUTIVE_FOLLOW_UPS = 1
+
 
 class InterviewNotFoundError(Exception):
     pass
@@ -52,10 +75,23 @@ def parse_object_id(raw_id: str) -> ObjectId:
 
 
 def _topic_for_index(topics: list[str], index: int) -> str:
-    """Round-robin through the selected topics. Difficulty adaptation and
-    weighted topic selection are Milestone 5 - this is deliberately the
-    simplest thing that lets every selected topic get asked about."""
+    """Round-robin default topic selection."""
     return topics[index % len(topics)]
+
+
+def select_next_topic(topics: list[str], index: int, weak_topics: set[str]) -> str:
+    """
+    Pure topic-selection decision, split out from _generate_next_topic_question
+    so it's unit-testable without a database (see tests/test_adaptive_engine.py).
+
+    If a topic selected for this interview has emerged as weak (spec section
+    8's "weak concept detected -> targeted question"), it takes priority
+    over strict round-robin rotation. Otherwise, rotate normally.
+    """
+    eligible_weak_topics = weak_topics & set(topics)
+    if eligible_weak_topics:
+        return next(iter(sorted(eligible_weak_topics)))
+    return _topic_for_index(topics, index)
 
 
 def _to_question_out(question_doc: dict) -> QuestionOut:
@@ -66,6 +102,7 @@ def _to_question_out(question_doc: dict) -> QuestionOut:
         difficulty=question_doc["difficulty"],
         question_text=question_doc["question_text"],
         concepts=question_doc["concepts"],
+        is_follow_up=question_doc.get("is_follow_up", False),
     )
 
 
@@ -77,9 +114,11 @@ class InterviewEngine:
     async def _to_interview_out(self, interview_doc: dict) -> InterviewOut:
         status = InterviewState(interview_doc["status"])
         current_question = None
-        # Only expose a "current question" while one is actually pending an
-        # answer - once COMPLETED/CANCELLED there's nothing to answer.
-        if status == InterviewState.QUESTIONING:
+        # A question is pending an answer in both QUESTIONING (a normal
+        # next-topic question) and FOLLOW_UP (a deep-dive on the previous
+        # answer) - both are "waiting for the candidate" from the client's
+        # point of view.
+        if status in (InterviewState.QUESTIONING, InterviewState.FOLLOW_UP):
             q_doc = await repo.get_question_by_index(
                 self._db, interview_doc["_id"], interview_doc["current_question_index"]
             )
@@ -91,6 +130,7 @@ class InterviewEngine:
             status=status,
             topics=interview_doc["topics"],
             difficulty=interview_doc["difficulty"],
+            current_difficulty=interview_doc["current_difficulty"],
             question_count=interview_doc["question_count"],
             current_question_index=interview_doc["current_question_index"],
             current_question=current_question,
@@ -98,14 +138,18 @@ class InterviewEngine:
             completed_at=interview_doc.get("completed_at"),
         )
 
-    async def _generate_and_store_question(self, interview_doc: dict, *, index: int) -> None:
-        topic = _topic_for_index(interview_doc["topics"], index)
+    async def _generate_next_topic_question(self, interview_doc: dict, *, index: int) -> None:
+        """Generate a fresh, non-follow-up question: round-robin topic
+        selection, overridden toward a weak topic if one has emerged."""
+        evaluations_so_far = await repo.list_evaluations(self._db, interview_doc["_id"])
+        weak_topics = compute_weak_topics(evaluations_so_far)
+
+        topic = select_next_topic(interview_doc["topics"], index, weak_topics)
+        difficulty = interview_doc["current_difficulty"]
         previously_asked = await repo.get_asked_question_texts(self._db, interview_doc["_id"])
 
         generated = await self._llm.generate_question(
-            topic=topic,
-            difficulty=interview_doc["difficulty"],
-            previously_asked=previously_asked,
+            topic=topic, difficulty=difficulty, previously_asked=previously_asked
         )
         await repo.insert_question(
             self._db,
@@ -115,6 +159,36 @@ class InterviewEngine:
             difficulty=generated.difficulty,
             question_text=generated.question,
             concepts=generated.concepts,
+        )
+
+    async def _generate_follow_up_question(
+        self,
+        interview_doc: dict,
+        *,
+        index: int,
+        parent_question: dict,
+        answer_text: str,
+        evaluation: AnswerEvaluation,
+        vague_flags: list[str],
+    ) -> None:
+        generated = await self._llm.generate_follow_up_question(
+            original_question=parent_question["question_text"],
+            original_answer=answer_text,
+            topic=parent_question["topic"],
+            difficulty=parent_question["difficulty"],
+            weaknesses=evaluation.weaknesses,
+            vague_flags=vague_flags,
+        )
+        await repo.insert_question(
+            self._db,
+            interview_id=interview_doc["_id"],
+            index=index,
+            topic=generated.topic,
+            difficulty=generated.difficulty,
+            question_text=generated.question,
+            concepts=generated.concepts,
+            is_follow_up=True,
+            parent_question_id=parent_question["_id"],
         )
 
     async def create_interview(self, request: CreateInterviewRequest) -> InterviewOut:
@@ -127,7 +201,7 @@ class InterviewEngine:
         )
 
         new_status = transition(InterviewState.SETUP, InterviewState.QUESTIONING)
-        await self._generate_and_store_question(interview_doc, index=0)
+        await self._generate_next_topic_question(interview_doc, index=0)
         await repo.update_interview_status(self._db, interview_doc["_id"], new_status)
 
         interview_doc = await repo.get_interview(self._db, interview_doc["_id"])
@@ -148,7 +222,7 @@ class InterviewEngine:
             raise InterviewNotFoundError(interview_id)
 
         current_status = InterviewState(interview_doc["status"])
-        if current_status != InterviewState.QUESTIONING:
+        if current_status not in (InterviewState.QUESTIONING, InterviewState.FOLLOW_UP):
             raise InterviewNotActiveError(
                 f"Interview is '{current_status}', not currently accepting answers"
             )
@@ -185,8 +259,15 @@ class InterviewEngine:
             vague_flags=vague_flags,
         )
 
+        new_difficulty = next_difficulty(interview_doc["current_difficulty"], evaluation)
         next_index = index + 1
         is_last_question = next_index >= interview_doc["question_count"]
+
+        should_follow_up = (
+            not is_last_question
+            and (bool(vague_flags) or evaluation.follow_up_recommended)
+            and interview_doc["consecutive_follow_ups"] < MAX_CONSECUTIVE_FOLLOW_UPS
+        )
 
         if is_last_question:
             final_status = transition(InterviewState.EVALUATING, InterviewState.COMPLETED)
@@ -195,7 +276,27 @@ class InterviewEngine:
                 oid,
                 final_status,
                 current_question_index=next_index,
+                current_difficulty=new_difficulty,
                 completed_at=repo.now(),
+            )
+        elif should_follow_up:
+            follow_up_status = transition(InterviewState.EVALUATING, InterviewState.FOLLOW_UP)
+            interview_doc["current_question_index"] = next_index
+            await self._generate_follow_up_question(
+                interview_doc,
+                index=next_index,
+                parent_question=question_doc,
+                answer_text=answer_text,
+                evaluation=evaluation,
+                vague_flags=vague_flags,
+            )
+            await repo.update_interview_status(
+                self._db,
+                oid,
+                follow_up_status,
+                current_question_index=next_index,
+                current_difficulty=new_difficulty,
+                consecutive_follow_ups=interview_doc["consecutive_follow_ups"] + 1,
             )
         else:
             # EVALUATING -> NEXT_QUESTION is a momentary bookkeeping state;
@@ -205,10 +306,16 @@ class InterviewEngine:
             # synchronous text interview).
             transition(InterviewState.EVALUATING, InterviewState.NEXT_QUESTION)
             interview_doc["current_question_index"] = next_index
-            await self._generate_and_store_question(interview_doc, index=next_index)
+            interview_doc["current_difficulty"] = new_difficulty
+            await self._generate_next_topic_question(interview_doc, index=next_index)
             resumed_status = transition(InterviewState.NEXT_QUESTION, InterviewState.QUESTIONING)
             await repo.update_interview_status(
-                self._db, oid, resumed_status, current_question_index=next_index
+                self._db,
+                oid,
+                resumed_status,
+                current_question_index=next_index,
+                current_difficulty=new_difficulty,
+                consecutive_follow_ups=0,
             )
 
         interview_doc = await repo.get_interview(self._db, oid)

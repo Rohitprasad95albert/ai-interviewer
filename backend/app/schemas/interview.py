@@ -98,6 +98,7 @@ class QuestionOut(BaseModel):
     difficulty: Difficulty
     question_text: str
     concepts: list[str]
+    is_follow_up: bool = False
 
 
 class EvaluationOut(BaseModel):
@@ -109,7 +110,8 @@ class InterviewOut(BaseModel):
     id: str
     status: InterviewState
     topics: list[Topic]
-    difficulty: Difficulty
+    difficulty: Difficulty  # base/target difficulty chosen at setup - fixed for the session
+    current_difficulty: Difficulty  # live, adapted difficulty (spec section 8) - moves as the interview progresses
     question_count: int
     current_question_index: int
     current_question: QuestionOut | None = None

@@ -37,6 +37,7 @@ export type QuestionOut = {
   difficulty: Difficulty;
   question_text: string;
   concepts: string[];
+  is_follow_up: boolean;
 };
 
 export type AnswerEvaluation = {
@@ -65,6 +66,7 @@ export type InterviewOut = {
   status: InterviewStatus;
   topics: Topic[];
   difficulty: Difficulty;
+  current_difficulty: Difficulty;
   question_count: number;
   current_question_index: number;
   current_question: QuestionOut | null;

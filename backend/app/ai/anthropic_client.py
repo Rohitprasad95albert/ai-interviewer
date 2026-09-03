@@ -19,7 +19,11 @@ import logging
 
 import anthropic
 
-from app.ai.prompt_builder import build_evaluation_prompt, build_question_prompt
+from app.ai.prompt_builder import (
+    build_evaluation_prompt,
+    build_follow_up_prompt,
+    build_question_prompt,
+)
 from app.core.config import settings
 from app.schemas.interview import AnswerEvaluation, Difficulty, GeneratedQuestion, Topic
 
@@ -64,5 +68,31 @@ class AnthropicLLMClient:
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
             output_format=AnswerEvaluation,
+        )
+        return response.parsed_output
+
+    async def generate_follow_up_question(
+        self,
+        *,
+        original_question: str,
+        original_answer: str,
+        topic: Topic,
+        difficulty: Difficulty,
+        weaknesses: list[str],
+        vague_flags: list[str],
+    ) -> GeneratedQuestion:
+        prompt = build_follow_up_prompt(
+            original_question=original_question,
+            original_answer=original_answer,
+            topic=topic,
+            difficulty=difficulty,
+            weaknesses=weaknesses,
+            vague_flags=vague_flags,
+        )
+        response = await self._client.messages.parse(
+            model=settings.anthropic_model,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+            output_format=GeneratedQuestion,
         )
         return response.parsed_output

@@ -98,9 +98,12 @@ export default function LiveInterviewPage() {
     <main className="mx-auto flex min-h-full max-w-2xl flex-col px-6 py-12">
       <header className="mb-8 flex items-center justify-between text-sm text-foreground/60">
         <span>AI Interviewer</span>
-        <span>
-          Question {Math.min(interview.current_question_index + 1, interview.question_count)} of{" "}
-          {interview.question_count}
+        <span className="flex items-center gap-3">
+          <span className="capitalize">{interview.current_difficulty}</span>
+          <span>
+            Question {Math.min(interview.current_question_index + 1, interview.question_count)} of{" "}
+            {interview.question_count}
+          </span>
         </span>
       </header>
 
@@ -114,6 +117,7 @@ export default function LiveInterviewPage() {
         <QuestionView
           questionText={interview.current_question?.question_text ?? ""}
           topic={interview.current_question?.topic ?? ""}
+          isFollowUp={interview.current_question?.is_follow_up ?? false}
           answerText={answerText}
           onAnswerChange={setAnswerText}
           onSubmit={handleSubmit}
@@ -127,6 +131,7 @@ export default function LiveInterviewPage() {
 function QuestionView({
   questionText,
   topic,
+  isFollowUp,
   answerText,
   onAnswerChange,
   onSubmit,
@@ -134,6 +139,7 @@ function QuestionView({
 }: {
   questionText: string;
   topic: string;
+  isFollowUp: boolean;
   answerText: string;
   onAnswerChange: (value: string) => void;
   onSubmit: () => void;
@@ -141,9 +147,16 @@ function QuestionView({
 }) {
   return (
     <div className="flex flex-1 flex-col">
-      <span className="mb-2 inline-block w-fit rounded-full bg-foreground/10 px-2.5 py-1 text-xs font-medium uppercase tracking-wide text-foreground/60">
-        {topic}
-      </span>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="inline-block w-fit rounded-full bg-foreground/10 px-2.5 py-1 text-xs font-medium uppercase tracking-wide text-foreground/60">
+          {topic}
+        </span>
+        {isFollowUp && (
+          <span className="inline-block w-fit rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+            Follow-up
+          </span>
+        )}
+      </div>
       <p className="text-lg leading-relaxed">{questionText}</p>
 
       <textarea
