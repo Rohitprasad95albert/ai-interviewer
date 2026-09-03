@@ -32,11 +32,16 @@ neither depends on Milestone 3.)
     below-threshold answers in this session gets targeted with the next
     question instead of strict round-robin
 - [x] AI layer behind an interface (`app/ai/base.py`, now including
-      `generate_follow_up_question`): a deterministic `StubLLMClient` (used
-      automatically without an API key, and what all adaptive-engine tests
-      run against) and an `AnthropicLLMClient` (implemented against the
-      current Anthropic SDK, **not yet verified against a live key** - see
-      Known limitations)
+      `generate_follow_up_question` and `extract_candidate_profile`): a
+      deterministic `StubLLMClient` (used automatically without an API key,
+      and what all adaptive-engine tests run against), an `AnthropicLLMClient`
+      (**not yet verified against a live key**), and an `OpenRouterLLMClient`
+      (real, **verified working against the live OpenRouter API** - see
+      "OpenRouter" below and Known limitations)
+- [x] **Multi-provider LLM configuration** - `LLM_PROVIDER` env var
+      (`auto`/`stub`/`anthropic`/`openrouter`) selects which client
+      `app/ai/factory.py` builds; forced non-`auto` values fail loudly at
+      startup if their key is missing, rather than silently using the stub
 - [x] Deterministic vague-answer detection (spec §12)
 - [x] **Resume ingestion** (spec §6), built as a foundation for future
       personalization, not wired into question generation yet:
@@ -94,7 +99,9 @@ ai-interviewer/
 │   │   ├── resume/         upload validation, extractors/ (pypdf, DOCX-ready),
 │   │   │                   keyword_extractor (deterministic tech matching),
 │   │   │                   profile_merger, service (orchestrator), repository
-│   │   ├── ai/             LLMClient interface, stub + Anthropic implementations,
+│   │   ├── ai/             LLMClient interface, stub + Anthropic + OpenRouter
+│   │   │                   implementations, factory (provider selection),
+│   │   │                   errors (provider-agnostic exception types),
 │   │   │                   stub_resume_extractor, prompt loader/builder
 │   │   ├── models/         (unused so far - schemas/ doubles as the DB shape)
 │   │   ├── services/       (unused so far - logic lives in interview/ and resume/)
@@ -128,7 +135,42 @@ ai-interviewer/
 | Frontend | Next.js, TypeScript, Tailwind CSS |
 | Backend | Python 3.12, FastAPI, Pydantic v2 |
 | Database | MongoDB (Motor async driver) |
-| AI | Anthropic Claude API |
+| AI | Anthropic Claude API (direct) or OpenRouter (proxy to many providers) - configurable, see below |
+
+## LLM providers
+
+`LLM_PROVIDER` in `backend/.env` selects which `LLMClient` implementation
+`app/ai/factory.py` builds. Nothing else in the app (interview engine,
+resume service, API routes) knows or cares which one is active.
+
+| `LLM_PROVIDER` | Client | Requires |
+|---|---|---|
+| `auto` (default) | Anthropic if `ANTHROPIC_API_KEY` is set, else the stub | nothing |
+| `stub` | Deterministic stub (no network calls) | nothing |
+| `anthropic` | `AnthropicLLMClient`, direct Anthropic API | `ANTHROPIC_API_KEY` |
+| `openrouter` | `OpenRouterLLMClient`, via [OpenRouter](https://openrouter.ai) | `OPENROUTER_API_KEY` |
+
+Forcing `anthropic` or `openrouter` without the matching key fails loudly at
+startup (`LLMConfigurationError`) rather than silently falling back to the
+stub.
+
+### OpenRouter
+
+Uses the official `openai` Python SDK pointed at OpenRouter's `base_url`
+(`https://openrouter.ai/api/v1`) - OpenRouter's own documented integration
+approach; no custom HTTP client. Structured output is requested via
+OpenRouter's `response_format: {"type": "json_schema", ...}` (built from
+each Pydantic schema) as a hint to the model, but the response is always
+independently `json.loads`'d and Pydantic-validated before being returned -
+never trusted blindly. One retry with corrective feedback is attempted on a
+malformed/invalid response; a second failure raises `LLMInvalidResponseError`.
+
+`openai.*` SDK exceptions are caught in `openrouter_client.py` and
+translated into provider-agnostic types (`app/ai/errors.py` -
+`LLMAuthenticationError`, `LLMRateLimitError`, `LLMTimeoutError`,
+`LLMConnectionError`, `LLMInvalidResponseError`) so nothing OpenRouter-
+specific leaks past this one file. `OPENROUTER_MODEL` is fully configurable
+(default `anthropic/claude-sonnet-5`) - never hardcoded elsewhere.
 
 ## Setup
 
@@ -170,8 +212,16 @@ Visit http://localhost:3000
 cd backend
 pip install -r requirements-dev.txt   # adds reportlab, used only to
                                         # generate real PDF fixtures in tests
-pytest -v
+pytest -v -m "not live"    # the full suite - never needs a real API key
+pytest -v -m live          # optional: real OpenRouter calls, needs
+                            # OPENROUTER_API_KEY and spends real credits
 ```
+
+The test environment always forces `LLM_PROVIDER=stub` (see
+`tests/conftest.py`), regardless of what `backend/.env` has configured for
+local dev use - so `pytest -v` (no `-m` filter) never accidentally spends
+API credits except for the explicitly-`live`-marked OpenRouter tests, which
+skip themselves automatically when `OPENROUTER_API_KEY` isn't set.
 
 ### Try it
 
@@ -207,6 +257,17 @@ commit a real `.env` file — it's git-ignored.
   SDK API and type-checks, but no live model call has actually been made.
   Set `ANTHROPIC_API_KEY` and run a real interview to confirm before relying
   on it.
+- **`OpenRouterLLMClient` is implemented and verified for transport/auth/
+  error-handling, but not for a successful structured-output round trip** -
+  the configured account returned `402 payment_required` (insufficient
+  credits) on the configured model, and a free-tier model that was tried
+  instead doesn't support structured outputs (`400`). Both failures were
+  caught and translated cleanly (proving the error-handling code works),
+  and a plain, non-structured completion against the free model succeeded
+  (proving auth/transport/base_url all work) - but no real
+  `generate_question`/`evaluate_answer`/`generate_follow_up_question`/
+  `extract_candidate_profile` call has actually returned real data yet.
+  **Add credits to the OpenRouter account to complete this verification.**
 - **Single technical-interview mode only** - no HR/project/resume/JD modes
   yet.
 - **Adaptive engine is session-only** - weak-topic targeting and difficulty
