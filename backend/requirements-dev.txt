@@ -1,0 +1,5 @@
+# Test-only dependencies - not needed to run the app, only to run the test
+# suite. reportlab generates real, valid PDF byte fixtures for the resume
+# extraction tests rather than hand-crafting fragile raw PDF bytes.
+-r requirements.txt
+reportlab==5.0.1

@@ -23,9 +23,11 @@ from app.ai.prompt_builder import (
     build_evaluation_prompt,
     build_follow_up_prompt,
     build_question_prompt,
+    build_resume_extraction_prompt,
 )
 from app.core.config import settings
 from app.schemas.interview import AnswerEvaluation, Difficulty, GeneratedQuestion, Topic
+from app.schemas.resume import CandidateProfile
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,16 @@ class AnthropicLLMClient:
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
             output_format=GeneratedQuestion,
+        )
+        return response.parsed_output
+
+    async def extract_candidate_profile(self, *, resume_text: str) -> CandidateProfile:
+        prompt = build_resume_extraction_prompt(resume_text=resume_text)
+        response = await self._client.messages.parse(
+            model=settings.anthropic_model,
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+            output_format=CandidateProfile,
         )
         return response.parsed_output
 

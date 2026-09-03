@@ -10,10 +10,10 @@ sensibly to answer length/vagueness so the evaluation pipeline is exercised
 for real.
 """
 
-import random
-
+from app.ai.stub_resume_extractor import extract_profile_heuristically
 from app.interview.vague_detector import detect_vague_flags
 from app.schemas.interview import AnswerEvaluation, Difficulty, GeneratedQuestion, Topic
+from app.schemas.resume import CandidateProfile
 
 _QUESTION_BANK: dict[Topic, list[tuple[str, list[str]]]] = {
     "dsa": [
@@ -152,3 +152,6 @@ class StubLLMClient:
             difficulty=difficulty,
             concepts=[],
         )
+
+    async def extract_candidate_profile(self, *, resume_text: str) -> CandidateProfile:
+        return extract_profile_heuristically(resume_text)

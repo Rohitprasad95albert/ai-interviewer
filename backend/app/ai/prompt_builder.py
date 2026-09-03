@@ -39,3 +39,8 @@ def build_follow_up_prompt(
         original_answer=original_answer,
         concerns=concerns,
     )
+
+
+def build_resume_extraction_prompt(*, resume_text: str) -> str:
+    template = load_prompt("resume", "extract_profile_v1.txt")
+    return template.format(resume_text=resume_text)

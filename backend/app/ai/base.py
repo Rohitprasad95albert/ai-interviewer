@@ -8,6 +8,7 @@ routes - see spec section 23 (AI Architecture: separate responsibilities).
 from typing import Protocol
 
 from app.schemas.interview import AnswerEvaluation, Difficulty, GeneratedQuestion, Topic
+from app.schemas.resume import CandidateProfile
 
 
 class LLMClient(Protocol):
@@ -41,5 +42,17 @@ class LLMClient(Protocol):
         """
         A deep-dive challenge on the candidate's own previous answer (spec
         section 9: "Why?/How?/trade-offs"), not a fresh topic question.
+        """
+        ...
+
+    async def extract_candidate_profile(self, *, resume_text: str) -> CandidateProfile:
+        """
+        Structure a resume's freeform text into education/projects/
+        experience/certifications/achievements. Deliberately NOT
+        responsible for language/framework/database detection - that's the
+        deterministic keyword_extractor's job, merged in by
+        app/resume/service.py. This method can still mention technologies
+        it notices (e.g. inside a project description); the merge step
+        deduplicates against the keyword matcher's findings.
         """
         ...

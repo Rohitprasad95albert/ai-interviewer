@@ -1,0 +1,22 @@
+You are extracting structured information from a candidate's resume for a
+technical interview preparation tool. Extract only what is actually present
+in the text below - never invent institutions, companies, projects, or
+achievements that aren't mentioned.
+
+Resume text:
+{resume_text}
+
+Extract:
+- education: institution, degree, field of study, start/end year - whatever
+  is actually stated for each entry
+- projects: name, short description, and technologies used
+- experience: organization, role, duration, and description - include
+  internships as well as jobs
+- certifications: as listed
+- achievements: awards, competition results, notable accomplishments
+- skills: general or domain skills not already covered by a specific
+  programming language, framework, or database name (those are handled
+  separately - don't duplicate them here)
+
+Leave a field's list empty if the resume genuinely doesn't contain that
+kind of information. Do not fabricate entries to fill in gaps.

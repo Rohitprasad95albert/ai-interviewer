@@ -10,9 +10,10 @@ This is a portfolio project built incrementally, milestone by milestone. See
 
 ## Status
 
-**Milestones 1 (Foundation), 2 (Interview MVP), and 5 (Adaptive Engine): complete.**
-Milestones 3/4/6-9 not started - see Roadmap. (5 was pulled forward, ahead
-of 3/4, at the user's request - it doesn't depend on persistence/resume.)
+**Milestones 1 (Foundation), 2 (Interview MVP), 4 (Resume Ingestion), and 5
+(Adaptive Engine): complete.** Milestones 3/6-9 not started - see Roadmap.
+(4 and 5 were done out of the spec's numeric order, at the user's request -
+neither depends on Milestone 3.)
 
 - [x] Repository structure, FastAPI + MongoDB + Next.js, `/api/health`
 - [x] Technical Interview: setup → question → answer → evaluation → next
@@ -37,9 +38,24 @@ of 3/4, at the user's request - it doesn't depend on persistence/resume.)
       current Anthropic SDK, **not yet verified against a live key** - see
       Known limitations)
 - [x] Deterministic vague-answer detection (spec §12)
+- [x] **Resume ingestion** (spec §6), built as a foundation for future
+      personalization, not wired into question generation yet:
+  - PDF upload → deterministic text extraction (`pypdf`, no LLM) →
+    deterministic tech-keyword matching (`app/resume/keyword_extractor.py`,
+    no LLM) → LLM-assisted structuring of education/projects/experience/
+    certifications/achievements → merged into one `CandidateProfile`
+  - File-type (magic bytes, not just declared content-type) and size
+    validation; corrupt/encrypted/image-only PDFs fail gracefully
+    (`status: "failed"` with a generic message, not a 500)
+  - Modular extractor interface (`app/resume/extractors/`) so DOCX support
+    is a new file + one registry line, not a rewrite
+  - `raw_text` and structured fields stored as siblings specifically so a
+    future RAG/chunking pipeline can use both without reshaping data
+    (RAG itself is not implemented)
 
-Not yet implemented: HR/project/resume interview modes, candidate profile,
-cross-interview weakness detection, analytics, voice, auth. See Roadmap.
+Not yet implemented: resume-based question generation, HR/project/JD
+interview modes, interview-performance candidate profile, cross-interview
+weakness detection, analytics, voice, auth, RAG. See Roadmap.
 
 ## Architecture
 
@@ -67,24 +83,43 @@ ai-interviewer/
 │
 ├── backend/      FastAPI app
 │   ├── app/
-│   │   ├── api/routes/     HTTP endpoints (health, interviews)
+│   │   ├── api/routes/     HTTP endpoints (health, interviews, resumes)
 │   │   ├── core/           config/settings
 │   │   ├── db/             MongoDB connection
 │   │   ├── schemas/        Pydantic request/response + LLM structured output
+│   │   │                   (interview.py, resume.py)
 │   │   ├── interview/      state machine, engine (orchestrator), Mongo repository,
 │   │   │                   vague-answer detector, difficulty_controller,
 │   │   │                   weakness_tracker (all deterministic, unit tested)
+│   │   ├── resume/         upload validation, extractors/ (pypdf, DOCX-ready),
+│   │   │                   keyword_extractor (deterministic tech matching),
+│   │   │                   profile_merger, service (orchestrator), repository
 │   │   ├── ai/             LLMClient interface, stub + Anthropic implementations,
-│   │   │                   prompt loader
+│   │   │                   stub_resume_extractor, prompt loader/builder
 │   │   ├── models/         (unused so far - schemas/ doubles as the DB shape)
-│   │   ├── services/       (unused so far - logic lives in interview/ for now)
+│   │   ├── services/       (unused so far - logic lives in interview/ and resume/)
 │   │   └── rag/            retrieval/embeddings                    (later)
 │   └── tests/
 │
-├── prompts/      versioned LLM prompt templates (interviewer/, evaluator/, ...)
+├── prompts/      versioned LLM prompt templates (interviewer/, evaluator/,
+│                 followup/, resume/)
 ├── docs/
 └── scripts/
 ```
+
+## API endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/health` | liveness + DB connectivity |
+| POST | `/api/interviews` | start a technical interview |
+| GET | `/api/interviews/{id}` | current state + question |
+| POST | `/api/interviews/{id}/answer` | submit an answer, get evaluation + next question |
+| GET | `/api/interviews/{id}/report` | full report after completion |
+| POST | `/api/resumes` | upload a resume (multipart, PDF only) |
+| GET | `/api/resumes` | list uploaded resumes (summary) |
+| GET | `/api/resumes/{id}` | resume detail + structured profile |
+| DELETE | `/api/resumes/{id}` | delete a resume and its data |
 
 ## Tech stack
 
@@ -133,6 +168,8 @@ Visit http://localhost:3000
 
 ```bash
 cd backend
+pip install -r requirements-dev.txt   # adds reportlab, used only to
+                                        # generate real PDF fixtures in tests
 pytest -v
 ```
 
@@ -150,6 +187,13 @@ Without `ANTHROPIC_API_KEY` set, this all runs against a deterministic stub
 AI (canned questions, heuristic scoring) - useful for developing/testing the
 app itself, but not a real interviewer. Set the key to get real questions
 and evaluation.
+
+**Resume upload** has no frontend yet - try it via the API directly:
+```bash
+curl -X POST http://localhost:8000/api/resumes -F "file=@/path/to/resume.pdf"
+curl http://localhost:8000/api/resumes
+```
+Or use the interactive docs at http://localhost:8000/docs.
 
 ## Environment variables
 
@@ -178,6 +222,19 @@ commit a real `.env` file — it's git-ignored.
 - **No interview history list UI yet** - individual reports work
   (`/interview/[id]/report`), but there's no dashboard view of past
   interviews (Milestone 3/16).
+- **Resume ingestion has no frontend UI yet** - upload/list/get/delete only
+  exist as API endpoints so far (verified via curl and the test suite); a
+  Resume Manager screen (spec §26) is a small follow-up, not built this
+  milestone.
+- **Resume content isn't used in interviews yet** - `CandidateProfile` is
+  extracted and stored, but nothing routes it into question generation.
+  That's the natural next step (a "Resume-Based Interview" mode), not
+  something this milestone's scope included.
+- **PDF only** - the extractor interface is written to make DOCX a small
+  addition, but DOCX isn't implemented.
+- **Keyword-list technology detection is necessarily incomplete** - it
+  catches common languages/frameworks/databases/tools, not everything;
+  the LLM structuring pass supplements it but isn't exhaustive either.
 
 ## Roadmap
 
@@ -187,7 +244,7 @@ Following the milestone plan from the product spec:
 2. **Interview MVP** — setup → question → answer → evaluation → next question *(done)*
 3. **Persistence** — interview history *list UI* (individual reports + all
    underlying data already exist as of Milestone 2)
-4. **Resume ingestion** — upload, extraction, resume-based questions
+4. **Resume ingestion** — upload, extraction, structured profile *(done - see Known limitations for what's still missing: frontend UI, DOCX, wiring into question generation)*
 5. **Adaptive interviewing** — difficulty adaptation, follow-ups, weak-topic detection *(done - within a single session; see Known limitations)*
 6. **Analytics** — progress tracking, *cross-interview* recurring weaknesses, prep plans
 7. **Job/Company mode** — JD analysis, role-specific interviews

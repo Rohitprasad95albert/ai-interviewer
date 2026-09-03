@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # CORS - the Next.js dev server
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    # Resume uploads (Milestone 4)
+    max_resume_size_bytes: int = 5 * 1024 * 1024  # 5MB
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
