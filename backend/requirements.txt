@@ -1,0 +1,14 @@
+# Pinned to the versions actually installed and verified during Milestone 1
+# setup (2026-09-03). Bump deliberately, not automatically.
+
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic==2.13.5
+pydantic-settings==2.15.0
+motor==3.7.1
+python-multipart==0.0.32
+httpx==0.28.1
+
+# Testing
+pytest==9.1.1
+pytest-asyncio==1.4.0
